@@ -6,87 +6,58 @@ from selenium.webdriver.chrome.options import Options as ChromeOptions
 from utils import attach
 
 
+load_dotenv()
+
+
 def pytest_addoption(parser):
-    parser.addoption("--url", default="https://demoqa.com/automation-practice-form", help="Адрес тестируемого сайта")
-    parser.addoption("--selenoid_url", default="https://selenoid.autotests.cloud/wd/hub", help="Адрес Selenoid")
-    parser.addoption("--browser", default="chrome", choices=("chrome", "firefox", "edge", "opera", "safari"), help="Браузер")
-    parser.addoption("--browser_version", default="128.0", help="Версия браузера")
-    parser.addoption("--headless", action="store_true", default=False, help="Headless режим")
-    parser.addoption("--resolution", default="1920x1080", help="Разрешение экрана")
-    parser.addoption("--environment", default="", choices=("", "stage", "prod", "dev", "local"), help="Окружение")
-    parser.addoption("--local", action="store_true", default=False, help="Запускать локально")
-
-
-@pytest.fixture(scope='session', autouse=True)
-def load_env(request):
-    env = request.config.getoption("--environment")
-    env_file = f"{env}.env" if env else ".env"
-    if os.path.exists(env_file):
-        load_dotenv(dotenv_path=env_file, override=True)
+    parser.addoption("--browser", default=os.getenv("BROWSER", "chrome"), help="Browser to use")
+    parser.addoption("--browser_version", default=os.getenv("BROWSER_VERSION", "128.0"), help="Browser version")
+    parser.addoption("--headless", default=os.getenv("HEADLESS", "False"), help="Headless mode True/False")
+    parser.addoption("--resolution", default=os.getenv("RESOLUTION", "1920x1080"), help="Screen resolution")
+    parser.addoption("--url", default=os.getenv("URL", "https://demoqa.com/automation-practice-form"), help="Base URL")
+    parser.addoption("--selenoid_url", default=os.getenv("SELENOID_URL", "https://selenoid.autotests.cloud/wd/hub"), help="Selenoid URL")
+    parser.addoption("--local", action="store_true", default=False, help="Run locally")
 
 
 @pytest.fixture(scope='function')
-def base_url(request):
-    return request.config.getoption("--url")
-
-
-@pytest.fixture(scope='function')
-def selenoid_url(request):
-    return request.config.getoption("--selenoid_url")
-
-
-@pytest.fixture(scope='function')
-def setup_browser(request):
-    return request.config.getoption("--browser")
-
-
-@pytest.fixture(scope='function')
-def browser_version(request):
-    return request.config.getoption("--browser_version")
-
-
-@pytest.fixture(scope='function')
-def driver(request, base_url, selenoid_url, setup_browser, browser_version):
-    browser = setup_browser
-    version = browser_version
-    headless = request.config.getoption("--headless")
+def driver(request):
+    browser_name = request.config.getoption("--browser")
+    browser_version = request.config.getoption("--browser_version")
+    headless = request.config.getoption("--headless").lower() == "true"
     resolution = request.config.getoption("--resolution")
+    base_url = request.config.getoption("--url")
+    selenoid_url = request.config.getoption("--selenoid_url")
     local = request.config.getoption("--local")
 
     options = ChromeOptions()
 
+    options.set_capability("browserName", browser_name)
+    options.set_capability("browserVersion", browser_version)
+    options.set_capability("selenoid:options", {
+        "enableVNC": True,
+        "enableVideo": True
+    })
+
     if headless:
         options.add_argument("--headless=new")
+
     options.add_argument(f"--window-size={resolution}")
 
     if local:
         driver_instance = webdriver.Chrome(options=options)
     else:
-        login = os.getenv("LOGIN")
+        user = os.getenv("LOGIN")
         password = os.getenv("PASSWORD")
 
-        selenoid_capabilities = {
-            "browserName": browser,
-            "browserVersion": version,
-            "selenoid:options": {
-                "enableVNC": True,
-                "enableVideo": True
-            }
-        }
-        options.capabilities.update(selenoid_capabilities)
-
-        if login and password:
-            from urllib.parse import urlparse, urlunparse
-            parsed = urlparse(selenoid_url)
-            command_executor = urlunparse((
-                parsed.scheme,
-                f"{login}:{password}@{parsed.netloc}",
-                parsed.path, parsed.params, parsed.query, parsed.fragment
-            ))
+        if user and password:
+            command_executor = f"https://{user}:{password}@{selenoid_url}"
         else:
             command_executor = selenoid_url
 
-        driver_instance = webdriver.Remote(command_executor=command_executor, options=options)
+        driver_instance = webdriver.Remote(
+            command_executor=command_executor,
+            options=options
+        )
 
     driver_instance.get(base_url)
 
