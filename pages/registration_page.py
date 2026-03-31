@@ -3,6 +3,7 @@ from selenium.webdriver.common.by import By
 from selenium.webdriver.common.keys import Keys
 from selenium.webdriver.support.ui import WebDriverWait
 from selenium.webdriver.support import expected_conditions as EC
+from models.user import Gender, Hobby
 
 
 class RegistrationPage:
@@ -11,6 +12,7 @@ class RegistrationPage:
         self.wait = WebDriverWait(driver, 10)
 
     def open(self) -> "RegistrationPage":
+        self.driver.get(f"{self.driver.base_url}/automation-practice-form")
         wrapper = self.driver.find_element(By.CSS_SELECTOR, ".practice-form-wrapper")
         assert "Student Registration Form" in wrapper.text
         return self
@@ -27,10 +29,19 @@ class RegistrationPage:
         self.driver.find_element(By.CSS_SELECTOR, "#userEmail").send_keys(value)
         return self
 
-    def select_gender(self, gender: str) -> "RegistrationPage":
-        self.driver.find_element(By.CSS_SELECTOR, "#genterWrapper").find_element(
-            By.XPATH, f".//*[text()='{gender}']"
-        ).click()
+    def select_gender(self, gender: Gender) -> "RegistrationPage":
+        if gender == Gender.MALE:
+            self.driver.find_element(By.CSS_SELECTOR, "#genterWrapper").find_element(
+                By.XPATH, ".//*[text()='Male']"
+            ).click()
+        elif gender == Gender.FEMALE:
+            self.driver.find_element(By.CSS_SELECTOR, "#genterWrapper").find_element(
+                By.XPATH, ".//*[text()='Female']"
+            ).click()
+        elif gender == Gender.OTHER:
+            self.driver.find_element(By.CSS_SELECTOR, "#genterWrapper").find_element(
+                By.XPATH, ".//*[text()='Other']"
+            ).click()
         return self
 
     def fill_mobile(self, value: str) -> "RegistrationPage":
@@ -47,12 +58,12 @@ class RegistrationPage:
     def select_hobbies(self, hobbies: list) -> "RegistrationPage":
         wrapper = self.driver.find_element(By.CSS_SELECTOR, "#hobbiesWrapper")
         for hobby in hobbies:
-            element = wrapper.find_element(By.XPATH, f".//*[text()='{hobby}']")
-            self.driver.execute_script("arguments[0].scrollIntoView({block: 'center'});", element)
-            clickable = self.wait.until(
-                EC.element_to_be_clickable((By.XPATH, f"//*[@id='hobbiesWrapper']//*[text()='{hobby}']"))
-            )
-            self.driver.execute_script("arguments[0].click();", clickable)
+            if hobby == Hobby.SPORTS:
+                wrapper.find_element(By.XPATH, ".//*[text()='Sports']").click()
+            elif hobby == Hobby.READING:
+                wrapper.find_element(By.XPATH, ".//*[text()='Reading']").click()
+            elif hobby == Hobby.MUSIC:
+                wrapper.find_element(By.XPATH, ".//*[text()='Music']").click()
         return self
 
     def upload_picture(self, file_name: str) -> "RegistrationPage":
@@ -63,7 +74,6 @@ class RegistrationPage:
 
     def fill_address(self, value: str) -> "RegistrationPage":
         self.driver.find_element(By.CSS_SELECTOR, "#currentAddress").send_keys(value)
-        self.driver.execute_script("window.scrollTo(200, document.body.scrollHeight);")
         return self
 
     def select_state(self, state: str) -> "RegistrationPage":

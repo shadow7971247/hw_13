@@ -1,77 +1,78 @@
 import os
 import pytest
-from dotenv import load_dotenv
 from selenium import webdriver
-from selenium.webdriver.chrome.options import Options as ChromeOptions
+from selenium.webdriver.chrome.options import Options
+from selenium.webdriver.firefox.options import Options as FirefoxOptions
 from utils import attach
-
+from dotenv import load_dotenv
 
 load_dotenv()
 
 
 def pytest_addoption(parser):
-    parser.addoption("--browser", default=os.getenv("BROWSER", "chrome"), help="Browser to use")
-    parser.addoption("--browser_version", default=os.getenv("BROWSER_VERSION", "128.0"), help="Browser version")
-    parser.addoption("--headless", default=os.getenv("HEADLESS", "False"), help="Headless mode True/False")
-    parser.addoption("--resolution", default=os.getenv("RESOLUTION", "1920x1080"), help="Screen resolution")
-    parser.addoption("--url", default=os.getenv("URL", "https://demoqa.com/automation-practice-form"), help="Base URL")
+    parser.addoption("--base_url", default=os.getenv("BASE_URL", "https://demoqa.com"), help="Base URL")
     parser.addoption("--selenoid_url", default=os.getenv("SELENOID_URL", "https://selenoid.autotests.cloud/wd/hub"), help="Selenoid URL")
-    parser.addoption("--local", action="store_true", default=False, help="Run locally")
+    parser.addoption("--browser", default=os.getenv("BROWSER", "chrome"), choices=["chrome", "firefox"], help="Browser")
+    parser.addoption("--browser_version", default=os.getenv("BROWSER_VERSION", "128.0"), help="Browser version")
+    parser.addoption("--headless", default=os.getenv("HEADLESS", "False"), help="Headless mode")
+    parser.addoption("--width", default=os.getenv("SCREEN_WIDTH", "1920"), help="Window width")
+    parser.addoption("--height", default=os.getenv("SCREEN_HEIGHT", "1080"), help="Window height")
 
 
 @pytest.fixture(scope='function')
-def driver(request):
+def setup_browser(request):
     browser_name = request.config.getoption("--browser")
     browser_version = request.config.getoption("--browser_version")
-    headless = request.config.getoption("--headless").lower() == "true"
-    resolution = request.config.getoption("--resolution")
-    base_url = request.config.getoption("--url")
+    headless = request.config.getoption("--headless") == "True"
+    width = request.config.getoption("--width")
+    height = request.config.getoption("--height")
+    base_url = request.config.getoption("--base_url")
     selenoid_url = request.config.getoption("--selenoid_url")
-    local = request.config.getoption("--local")
 
-    options = ChromeOptions()
+    user = os.getenv("SELENOID_USER", "")
+    password = os.getenv("SELENOID_PASSWORD", "")
 
-    options.set_capability("browserName", browser_name)
-    options.set_capability("browserVersion", browser_version)
-    options.set_capability("selenoid:options", {
-        "enableVNC": True,
-        "enableVideo": True
-    })
-
-    if headless:
-        options.add_argument("--headless=new")
-
-    options.add_argument(f"--window-size={resolution}")
-
-    if local:
-        driver_instance = webdriver.Chrome(options=options)
+    if user and password:
+        remote_url = selenoid_url.replace("://", f"://{user}:{password}@")
     else:
-        user = os.getenv("LOGIN")
-        password = os.getenv("PASSWORD")
+        remote_url = selenoid_url
 
-        if user and password:
-            command_executor = f"https://{user}:{password}@{selenoid_url}"
-        else:
-            command_executor = selenoid_url
+    if browser_name == "chrome":
+        options = Options()
+        if headless:
+            options.add_argument("--headless=new")
+        options.add_argument(f"--window-size={width},{height}")
+    elif browser_name == "firefox":
+        options = FirefoxOptions()
+        if headless:
+            options.add_argument("--headless")
+        options.add_argument(f"--width={width}")
+        options.add_argument(f"--height={height}")
+    else:
+        raise ValueError(f"Browser {browser_name} not supported")
 
-        driver_instance = webdriver.Remote(
-            command_executor=command_executor,
-            options=options
-        )
+    selenoid_capabilities = {
+        "browserName": browser_name,
+        "browserVersion": browser_version,
+        "selenoid:options": {
+            "enableVNC": True,
+            "enableVideo": True
+        }
+    }
+    options.capabilities.update(selenoid_capabilities)
 
-    driver_instance.get(base_url)
+    driver = webdriver.Remote(
+        command_executor=remote_url,
+        options=options
+    )
 
-    yield driver_instance
+    driver.base_url = base_url
 
-    try:
-        attach.add_screenshot(driver_instance)
-        attach.add_page_source(driver_instance)
-        attach.add_console_logs(driver_instance)
-        attach.add_video(driver_instance)
-    except:
-        pass
+    yield driver
 
-    try:
-        driver_instance.quit()
-    except:
-        pass
+    attach.add_screenshot(driver)
+    attach.add_page_source(driver)
+    attach.add_console_logs(driver)
+    attach.add_video(driver)
+
+    driver.quit()
